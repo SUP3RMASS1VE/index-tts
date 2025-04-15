@@ -10,6 +10,34 @@ from tqdm import tqdm
 import yaml
 import warnings
 import torch
+import io
+
+# Custom stderr filter to hide specific CUDA errors
+class FilteredStderr:
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+        self.blacklist = [
+            "LINK : fatal error LNK1181: cannot open input file 'aio.lib'",
+            "LINK : fatal error LNK1181: cannot open input file 'cufile.lib'",
+            "NOTE: Redirects are currently not supported in Windows or MacOs",
+            "test.c"
+        ]
+    
+    def write(self, message):
+        if not any(error in message for error in self.blacklist):
+            self.original_stderr.write(message)
+    
+    def flush(self):
+        self.original_stderr.flush()
+        
+    def isatty(self):
+        return self.original_stderr.isatty()
+        
+    def fileno(self):
+        return self.original_stderr.fileno()
+
+# Install our custom filter
+sys.stderr = FilteredStderr(sys.stderr)
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -42,6 +70,16 @@ def suppress_stdout_stderr():
             yield
         finally:
             sys.stdout, sys.stderr = old_stdout, old_stderr
+
+# Add more specific CUDA warning suppression
+if torch.cuda.is_available():
+    # Suppress CUDA initialization messages
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'  # More controlled CUDA launches
+    os.environ['TORCH_CUDA_ARCH_LIST'] = 'All'  # Avoid architecture-specific warnings
+    
+    # Suppress NVRTC warnings
+    if hasattr(torch.cuda, 'nvrtc'):
+        torch._C._jit_set_nvrtc_options(["--display-error-number", "--suppress-warnings"])
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -118,25 +156,40 @@ i18n = I18nAuto(language="en")  # Changed to English
 MODE = 'local'
 
 print("Loading IndexTTS model...")
-with suppress_stdout_stderr():
-    # Fix: Pass explicit device parameter and disable CUDA kernel for compatibility
+# More extensive suppression during model loading
+try:
+    # Completely silence all output during model loading
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+    
+    # Try loading the model
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    tts = IndexTTS(
+        model_dir="checkpoints", 
+        cfg_path="checkpoints/config.yaml",
+        device=device,
+        use_cuda_kernel=False  # Disable CUDA kernel to avoid compilation issues
+    )
+except Exception as e:
+    # Restore stderr and stdout before printing errors
+    sys.stdout, sys.stderr = original_stdout, original_stderr
+    print(f"Warning: Error during model initialization: {e}")
+    print("Falling back to CPU mode")
     try:
-        tts = IndexTTS(
-            model_dir="checkpoints", 
-            cfg_path="checkpoints/config.yaml",
-            device=device,
-            use_cuda_kernel=False  # Disable CUDA kernel to avoid compilation issues
-        )
-    except Exception as e:
-        print(f"Warning: Error during model initialization: {e}")
-        print("Falling back to CPU mode")
         tts = IndexTTS(
             model_dir="checkpoints", 
             cfg_path="checkpoints/config.yaml",
             device="cpu",
             use_cuda_kernel=False
         )
+    except Exception as e:
+        print(f"Fatal error loading model: {e}")
+        sys.exit(1)
+finally:
+    # Restore stdout and stderr
+    if 'original_stdout' in locals() and 'original_stderr' in locals():
+        sys.stdout, sys.stderr = original_stdout, original_stderr
 
 os.makedirs("outputs/tasks", exist_ok=True)
 os.makedirs("prompts", exist_ok=True)
@@ -403,6 +456,13 @@ if __name__ == "__main__":
     os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
     
     try:
+        # Ensure our custom filter is active
+        if not isinstance(sys.stderr, FilteredStderr):
+            sys.stderr = FilteredStderr(sys.stderr)
+            
+        # Disable the torch distributed elastic warning
+        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "OFF"
+        
         demo.queue(20)
         demo.launch(server_name="127.0.0.1", share=False)
     except Exception as e:
