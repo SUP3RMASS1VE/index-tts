@@ -14,7 +14,20 @@ import torch
 # Suppress warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning,ignore::DeprecationWarning'
+warnings.filterwarnings("ignore", category=FutureWarning)  # Added to suppress FutureWarnings
+os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning,ignore::DeprecationWarning,ignore::FutureWarning'
+
+# Monkey patch torch._pytree to silence FutureWarning messages
+import torch.utils._pytree
+if hasattr(torch.utils._pytree, "_register_pytree_node"):
+    original_register = torch.utils._pytree._register_pytree_node
+    def patched_register(*args, **kwargs):
+        # Suppress the warning by using the new API if available
+        if hasattr(torch.utils._pytree, "register_pytree_node"):
+            return torch.utils._pytree.register_pytree_node(*args, **kwargs)
+        else:
+            return original_register(*args, **kwargs)
+    torch.utils._pytree._register_pytree_node = patched_register
 
 # Suppress CUDA compilation warnings by redirecting stderr temporarily during model loading
 import contextlib
@@ -108,12 +121,22 @@ print("Loading IndexTTS model...")
 with suppress_stdout_stderr():
     # Fix: Pass explicit device parameter and disable CUDA kernel for compatibility
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tts = IndexTTS(
-        model_dir="checkpoints", 
-        cfg_path="checkpoints/config.yaml",
-        device=device,
-        use_cuda_kernel=False  # Disable CUDA kernel to avoid compilation issues
-    )
+    try:
+        tts = IndexTTS(
+            model_dir="checkpoints", 
+            cfg_path="checkpoints/config.yaml",
+            device=device,
+            use_cuda_kernel=False  # Disable CUDA kernel to avoid compilation issues
+        )
+    except Exception as e:
+        print(f"Warning: Error during model initialization: {e}")
+        print("Falling back to CPU mode")
+        tts = IndexTTS(
+            model_dir="checkpoints", 
+            cfg_path="checkpoints/config.yaml",
+            device="cpu",
+            use_cuda_kernel=False
+        )
 
 os.makedirs("outputs/tasks", exist_ok=True)
 os.makedirs("prompts", exist_ok=True)
@@ -376,5 +399,12 @@ with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="sl
 
 
 if __name__ == "__main__":
-    demo.queue(20)
-    demo.launch(server_name="127.0.0.1", share=False)
+    # Disable Gradio's update message
+    os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
+    
+    try:
+        demo.queue(20)
+        demo.launch(server_name="127.0.0.1", share=False)
+    except Exception as e:
+        print(f"Error launching the web interface: {e}")
+        print("Try running with CPU only mode if you're having GPU-related issues")
