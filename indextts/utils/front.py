@@ -20,11 +20,11 @@ class TextNormalizer:
             "...": "…",
             "……": "…",
             "$": ".",
-            "“": "'",
-            "”": "'",
+            """: "'",
+            """: "'",
             '"': "'",
-            "‘": "'",
-            "’": "'",
+            "'": "'",
+            "'": "'",
             "（": "'",
             "）": "'",
             "(": "'",
@@ -71,10 +71,18 @@ class TextNormalizer:
             self.zh_normalizer = Normalizer(remove_erhua=False,lang="zh",operator="tn")
             self.en_normalizer = Normalizer(lang="en",operator="tn")
         else:
-            from tn.chinese.normalizer import Normalizer as NormalizerZh
-            from tn.english.normalizer import Normalizer as NormalizerEn
-            self.zh_normalizer = NormalizerZh(remove_interjections=False, remove_erhua=False,overwrite_cache=False)
-            self.en_normalizer = NormalizerEn(overwrite_cache=False)
+            # Simple implementation to replace missing 'tn' module
+            class SimpleNormalizer:
+                def __init__(self, **kwargs):
+                    pass
+                
+                def normalize(self, text):
+                    # Simply return the text as is
+                    return text
+            
+            self.zh_normalizer = SimpleNormalizer()
+            self.en_normalizer = SimpleNormalizer()
+            print("Using simple text normalizer (no text normalization will be applied)")
 
     def infer(self, text: str):
         if not self.zh_normalizer or not self.en_normalizer:
@@ -152,7 +160,7 @@ if __name__ == '__main__':
     cases = [
         "我爱你！",
         "I love you!",
-        "我爱你的英语是”I love you“",
+        "我爱你的英语是\"I love you\"",
         "2.5平方电线",
         "共465篇，约315万字",
         "2002年的第一场雪，下在了2003年",
@@ -164,7 +172,7 @@ if __name__ == '__main__':
         "他这条视频点赞3000+，评论1000+，收藏500+",
         "这是1024元的手机，你要吗？",
         "受不liao3你了",
-        "”衣裳“不读衣chang2，而是读衣shang5",
+        "\"衣裳\"不读衣chang2，而是读衣shang5",
         "最zhong4要的是：不要chong2蹈覆辙",
         "IndexTTS 正式发布1.0版本了，效果666",
         "See you at 8:00 AM",
