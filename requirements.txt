@@ -22,4 +22,4 @@ gradio
 tqdm
 huggingface_hub
 PyYAML
-deepspeed
+deepspeed==0.16.5
