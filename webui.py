@@ -418,6 +418,7 @@ with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="sl
             with gr.Column(scale=1, min_width=300):
                 gr.HTML('<div class="card-title">Voice Reference</div>')
                 os.makedirs("prompts", exist_ok=True)
+                gr.HTML('<div style="margin-bottom: 10px; color: #94a3b8; font-size: 0.9rem;">For best results, use clean voice audio less than 1 minute long.</div>')
                 prompt_audio = gr.Audio(label="Upload reference audio", 
                                       sources=["upload", "microphone"], 
                                       type="filepath",
