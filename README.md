@@ -1,5 +1,6 @@
 
 # IndexTTS Web UI
+![Screenshot 2025-04-17 233756](https://github.com/user-attachments/assets/c6d89219-29b2-4994-a1fb-69f2431e93bd)
 
 A simple web interface for the [IndexTTS model](https://huggingface.co/IndexTeam/Index-TTS), an industrial-level controllable and efficient zero-shot text-to-speech system.
 
