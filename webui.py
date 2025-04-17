@@ -11,6 +11,7 @@ import yaml
 import warnings
 import torch
 import io
+import random
 
 # Custom stderr filter to hide specific CUDA errors
 class FilteredStderr:
@@ -194,19 +195,33 @@ finally:
 os.makedirs("outputs/tasks", exist_ok=True)
 os.makedirs("prompts", exist_ok=True)
 
-def infer(voice, text, output_path=None):
+def infer(voice, text, output_path=None, seed=None):
     if not output_path:
         output_path = os.path.join("outputs", f"spk_{int(time.time())}.wav")
+    
+    # Set seed for reproducibility if provided
+    if seed is not None:
+        random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    
     tts.infer(voice, text, output_path)
     return output_path
 
-def gen_single(prompt, text):
-    output_path = infer(prompt, text)
+def gen_single(prompt, text, seed=None):
+    # Use random seed if seed is 0 or None
+    if seed is None or seed == 0:
+        seed = None
+    else:
+        seed = int(seed)  # Ensure it's an integer
+    
+    output_path = infer(prompt, text, seed=seed)
     return gr.update(value=output_path, visible=True)
 
 def update_prompt_audio():
-    update_button = gr.update(interactive=True)
-    return update_button
+    # Always keep button interactive
+    return gr.update(interactive=True, variant="primary")
 
 # Custom CSS for better UI - Dark Theme
 css = """
@@ -221,6 +236,7 @@ css = """
     --border-color: #2d3748;
     --border-radius: 8px;
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+    --content-width: 1100px;
 }
 
 body {
@@ -229,13 +245,81 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', sans-serif;
 }
 
-.main {
-    max-width: 1200px;
-    margin: 0 auto;
+#main-container {
+    width: var(--content-width) !important;
+    max-width: 90% !important;
+    margin: 0 auto !important;
 }
 
 .gradio-container {
-    margin: 0 auto;
+    width: 100% !important;
+    margin: 0 auto !important;
+}
+
+/* Tab and container styling */
+.tab-nav {
+    margin-bottom: 1.5rem !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.tabitem {
+    padding: 1.5rem !important;
+}
+
+/* Fix audio elements */
+.audio-player {
+    width: 100% !important;
+    height: auto !important;
+    margin-bottom: 10px !important;
+    border-radius: var(--border-radius) !important;
+    overflow: hidden !important;
+}
+
+.audio-player .wrapper {
+    width: 100% !important;
+}
+
+.audio-player .controls {
+    padding: 10px !important;
+}
+
+/* Better column balancing */
+.gr-row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 20px !important;
+    width: 100% !important;
+    margin-bottom: 20px !important;
+}
+
+/* Button styling */
+.gr-button {
+    background-color: var(--primary-color) !important;
+    border: none !important;
+    color: white !important;
+    border-radius: var(--border-radius) !important;
+    padding: 0.75rem 1.5rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: var(--shadow) !important;
+    width: 100% !important;
+    height: 46px !important;
+}
+
+.gr-button:hover {
+    background-color: var(--secondary-color) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Card layout */
+.card-title {
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+    margin-bottom: 1rem !important;
+    color: var(--text-color) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 0.5rem !important;
 }
 
 .header {
@@ -260,28 +344,6 @@ body {
     font-size: 1.1rem;
 }
 
-.gr-button {
-    background-color: var(--primary-color) !important;
-    border: none !important;
-    color: white !important;
-    border-radius: var(--border-radius) !important;
-    padding: 0.5rem 1.5rem !important;
-    font-weight: 600 !important;
-    cursor: pointer !important;
-    transition: all 0.2s ease !important;
-    box-shadow: var(--shadow) !important;
-}
-
-.gr-button:hover {
-    background-color: var(--secondary-color) !important;
-    transform: translateY(-2px) !important;
-}
-
-.gr-button:disabled {
-    opacity: 0.7 !important;
-    cursor: not-allowed !important;
-}
-
 .gr-box, .gr-form, .gr-panel {
     border-radius: var(--border-radius) !important;
     box-shadow: var(--shadow) !important;
@@ -300,6 +362,7 @@ body {
     color: var(--text-color) !important;
     padding: 0.75rem !important;
     transition: all 0.2s ease !important;
+    width: 100% !important;
 }
 
 .gr-input:focus, .gr-textarea:focus {
@@ -317,74 +380,9 @@ body {
     color: var(--text-color) !important;
 }
 
-.gr-tab {
-    padding: 0.75rem 1.5rem !important;
-    font-weight: 600 !important;
-    color: var(--secondary-text-color) !important;
-}
-
-.gr-tab-selected {
-    border-color: var(--primary-color) !important;
-    color: var(--primary-color) !important;
-}
-
-/* Custom footer */
-.footer {
-    text-align: center;
-    margin-top: 2rem;
-    padding: 1rem;
-    font-size: 0.9rem;
-    color: var(--secondary-text-color);
-}
-
-/* Card layout */
-.card {
-    background-color: var(--surface-color);
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow);
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    border: 1px solid var(--border-color);
-}
-
-.card-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 1rem;
-    color: var(--text-color);
-}
-
-/* Dark theme specific adjustments */
-.contain {
-    background-color: var(--surface-color) !important;
-}
-
-.dark .gr-input, .dark .gr-textarea {
-    background-color: #2d3748 !important;
-    color: var(--text-color) !important;
-}
-
-.dark label, .dark .gr-label {
-    color: var(--text-color) !important;
-}
-
-.dark .gr-checkbox {
-    border-color: var(--border-color) !important;
-}
-
-.dark .gr-radio {
-    border-color: var(--border-color) !important;
-}
-
-/* Audio input styling */
-.audio-recorder {
-    background-color: var(--surface-color) !important;
-    border: 1px solid var(--border-color) !important;
-}
-
-.uploadButton {
-    color: var(--text-color) !important;
-    background-color: var(--surface-color) !important;
+/* Fix slider appearance */
+.gr-slider {
+    width: 100% !important;
 }
 
 /* Textarea placeholder */
@@ -392,9 +390,18 @@ body {
     color: var(--secondary-text-color) !important;
     opacity: 0.7 !important;
 }
+
+/* Footer */
+.footer {
+    text-align: center;
+    margin-top: 2rem;
+    padding: 1rem;
+    font-size: 0.9rem;
+    color: var(--secondary-text-color);
+}
 """
 
-with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate", font=["Inter", "sans-serif"])) as demo:
+with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate", font=["Inter", "sans-serif"]), elem_id="main-container") as demo:
     mutex = threading.Lock()
     
     # Header
@@ -407,33 +414,46 @@ with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="sl
     
     # Main content
     with gr.Tab("Audio Generation"):
-        with gr.Row():
-            with gr.Column(scale=1):
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=1, min_width=300):
                 gr.HTML('<div class="card-title">Voice Reference</div>')
                 os.makedirs("prompts", exist_ok=True)
-                prompt_audio = gr.Audio(label="Upload reference audio", key="prompt_audio",
-                                      sources=["upload", "microphone"], type="filepath",
-                                      elem_classes="gr-box gr-padded")
+                prompt_audio = gr.Audio(label="Upload reference audio", 
+                                      sources=["upload", "microphone"], 
+                                      type="filepath",
+                                      elem_id="audio_component")
                 prompt_list = os.listdir("prompts")
                 default = ''
                 if prompt_list:
                     default = prompt_list[0]
             
-            with gr.Column(scale=2):
+            with gr.Column(scale=2, min_width=500):
                 gr.HTML('<div class="card-title">Text Input</div>')
                 input_text_single = gr.Textbox(
                     label="Enter text to convert to speech",
                     placeholder="Type your text here...",
-                    key="input_text_single",
-                    lines=5,
-                    elem_classes="gr-box gr-padded"
+                    lines=5
                 )
-                gen_button = gr.Button("🔊 Generate Speech", key="gen_button", interactive=True, size="lg")
+                
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        with gr.Row():
+                            gr.HTML('<div class="card-title">Seed</div>')
+                        seed_input = gr.Slider(
+                            minimum=0,
+                            maximum=1000000,
+                            step=1,
+                            label="",
+                            value=0,
+                            info="Set to 0 for random seed"
+                        )
+                    with gr.Column(scale=1):
+                        with gr.Row():
+                            gr.HTML('<div style="height: 38px;"></div>')
+                        gen_button = gr.Button("🔊 Generate Speech", variant="primary", size="lg")
         
-        with gr.Row():
-            with gr.Column():
-                gr.HTML('<div class="card-title">Generated Output</div>')
-                output_audio = gr.Audio(label="Generated Result", visible=False, key="output_audio", elem_classes="gr-box gr-padded")
+        gr.HTML('<div class="card-title">Generated Output</div>')
+        output_audio = gr.Audio(label="", visible=True, elem_id="output_audio")
     
     # Footer
     gr.HTML('''
@@ -447,7 +467,7 @@ with gr.Blocks(css=css, theme=gr.themes.Soft(primary_hue="blue", neutral_hue="sl
                          outputs=[gen_button])
 
     gen_button.click(gen_single,
-                     inputs=[prompt_audio, input_text_single],
+                     inputs=[prompt_audio, input_text_single, seed_input],
                      outputs=[output_audio])
 
 
