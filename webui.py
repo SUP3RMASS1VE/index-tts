@@ -12,6 +12,7 @@ import warnings
 import torch
 import io
 import random
+import json
 
 # Custom stderr filter to hide specific CUDA errors
 class FilteredStderr:
@@ -86,17 +87,26 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 sys.path.append(os.path.join(current_dir, "indextts"))
 
+# Add command line argument parsing
+import argparse
+parser = argparse.ArgumentParser(description="IndexTTS WebUI")
+parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbose mode")
+parser.add_argument("--port", type=int, default=7860, help="Port to run the web UI on")
+parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the web UI on")
+parser.add_argument("--model_dir", type=str, default="checkpoints", help="Model checkpoints directory")
+cmd_args = parser.parse_args()
+
 def download_model_files():
     """Download model files from Hugging Face on first run"""
-    repo_id = "IndexTeam/Index-TTS"
-    os.makedirs("checkpoints", exist_ok=True)
+    repo_id = "IndexTeam/IndexTTS-1.5"
+    os.makedirs(cmd_args.model_dir, exist_ok=True)
     
     # Check if config file exists, download if not
-    config_path = os.path.join("checkpoints", "config.yaml")
+    config_path = os.path.join(cmd_args.model_dir, "config.yaml")
     if not os.path.exists(config_path):
         print("Downloading config.yaml...")
         try:
-            hf_hub_download(repo_id=repo_id, filename="config.yaml", local_dir="checkpoints", local_dir_use_symlinks=False)
+            hf_hub_download(repo_id=repo_id, filename="config.yaml", local_dir=cmd_args.model_dir, local_dir_use_symlinks=False)
         except Exception as e:
             print(f"Error downloading config.yaml: {e}")
             return False
@@ -109,21 +119,20 @@ def download_model_files():
         print(f"Error loading config file: {e}")
         return False
     
-    # Get model filenames from config
+    # Get model filenames from config - Updated for v1.5
     model_files = [
-        config.get("dvae_checkpoint", "dvae.pth"),
-        config.get("gpt_checkpoint", "gpt.pth"),
-        config.get("bigvgan_checkpoint", "bigvgan_generator.pth"),
-        "bpe.model"  # Tokenizer model
+        "bigvgan_generator.pth",
+        "bpe.model",
+        "gpt.pth"
     ]
     
     # Download each model file
     for file in model_files:
-        file_path = os.path.join("checkpoints", file)
+        file_path = os.path.join(cmd_args.model_dir, file)
         if not os.path.exists(file_path):
             print(f"Downloading {file}...")
             try:
-                hf_hub_download(repo_id=repo_id, filename=file, local_dir="checkpoints", local_dir_use_symlinks=False)
+                hf_hub_download(repo_id=repo_id, filename=file, local_dir=cmd_args.model_dir, local_dir_use_symlinks=False)
                 print(f"Successfully downloaded {file}")
             except Exception as e:
                 print(f"Error downloading {file}: {e}")
@@ -132,8 +141,8 @@ def download_model_files():
     print("All model files downloaded successfully!")
     return True
 
-# Call the download function before importing the TTS model
-if not all(os.path.exists(os.path.join("checkpoints", f)) for f in ["config.yaml", "dvae.pth", "gpt.pth", "bigvgan_generator.pth", "bpe.model"]):
+# Call the download function before importing the TTS model - Updated for v1.5
+if not all(os.path.exists(os.path.join(cmd_args.model_dir, f)) for f in ["config.yaml", "bigvgan_generator.pth", "bpe.model", "gpt.pth"]):
     print("First run detected. Downloading model files...")
     if not download_model_files():
         print("Error downloading model files. Please check your internet connection and try again.")
@@ -164,11 +173,11 @@ try:
     sys.stdout = io.StringIO()
     sys.stderr = io.StringIO()
     
-    # Try loading the model
+    # Try loading the model - Updated to use cmd_args
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tts = IndexTTS(
-        model_dir="checkpoints", 
-        cfg_path="checkpoints/config.yaml",
+        model_dir=cmd_args.model_dir, 
+        cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
         device=device,
         use_cuda_kernel=False  # Disable CUDA kernel to avoid compilation issues
     )
@@ -179,8 +188,8 @@ except Exception as e:
     print("Falling back to CPU mode")
     try:
         tts = IndexTTS(
-            model_dir="checkpoints", 
-            cfg_path="checkpoints/config.yaml",
+            model_dir=cmd_args.model_dir, 
+            cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
             device="cpu",
             use_cuda_kernel=False
         )
