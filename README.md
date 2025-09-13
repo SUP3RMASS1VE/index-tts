@@ -1,6 +1,6 @@
 
 # IndexTTS-2 Web UI
-![Screenshot 2025-04-17 233756](https://github.com/user-attachments/assets/c6d89219-29b2-4994-a1fb-69f2431e93bd)
+<img width="1515" height="1300" alt="Screenshot 2025-09-13 132950" src="https://github.com/user-attachments/assets/32e28605-ba93-499f-ace1-969772f3005b" />
 
 A comprehensive web interface for [IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2), a breakthrough in emotionally expressive and duration-controlled auto-regressive zero-shot text-to-speech.
 
