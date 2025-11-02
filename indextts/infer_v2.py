@@ -658,6 +658,28 @@ class QwenEmotion:
     def clamp_score(self, value):
         return max(self.min_score, min(self.max_score, value))
 
+    def _format_messages_fallback(self, messages):
+        """
+        Build a simple prompt string if the tokenizer has no chat template.
+        This avoids hard dependency on tokenizer.chat_template.
+        """
+        system = ""
+        user = ""
+        for m in messages:
+            if m.get("role") == "system":
+                system = m.get("content", "")
+            elif m.get("role") == "user":
+                user = m.get("content", "")
+        # Basic instruction-style formatting
+        # The trailing "Assistant:" nudges the model to generate a response
+        parts = []
+        if system:
+            parts.append(f"System: {system}")
+        if user:
+            parts.append(f"User: {user}")
+        parts.append("Assistant:")
+        return "\n\n".join(parts)
+
     def convert(self, content):
         # generate emotion vector dictionary:
         # - insert values in desired order (Python 3.7+ `dict` remembers insertion order)
@@ -682,12 +704,23 @@ class QwenEmotion:
             {"role": "system", "content": f"{self.prompt}"},
             {"role": "user", "content": f"{text_input}"}
         ]
-        text = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
-        )
+        # Prefer chat template when available; otherwise fall back to a simple prompt
+        try:
+            if getattr(self.tokenizer, "chat_template", None):
+                text = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    enable_thinking=False,
+                )
+            else:
+                raise AttributeError("chat_template is not set")
+        except Exception as e:
+            # Graceful fallback for tokenizers without chat templates or incompatible args
+            # Only print if explicitly enabled for debugging
+            if os.environ.get("INDEXTTS2_DEBUG_CHAT_TEMPLATE") == "1":
+                print(f">> tokenizer has no usable chat template; falling back to plain prompt. Reason: {type(e).__name__}: {e}")
+            text = self._format_messages_fallback(messages)
         model_inputs = self.tokenizer([text], return_tensors="pt").to(self.model.device)
 
         # conduct text completion
